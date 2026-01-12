@@ -193,7 +193,7 @@ This is an automated analysis. Please consult a professional structural engineer
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100">
       <div className="max-w-2xl mx-auto p-4 sm:p-6">
         {/* Header with Actions */}
         <div className="flex justify-between items-center mb-6 pt-4">
@@ -314,7 +314,7 @@ This is an automated analysis. Please consult a professional structural engineer
             {(result["Risk Level"] === "Medium" ||
               result["Risk Level"] === "High") && (
               <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start">
-                <AlertCircle className="w-5 h-5 text-red-600 mr-3 mt-0.5 flex-shrink-0" />
+                <AlertCircle className="w-5 h-5 text-red-600 mr-3 mt-0.5 shrink-0" />
                 <p className="text-sm text-red-800">
                   <strong>Warning:</strong> Professional structural inspection
                   strongly recommended.
