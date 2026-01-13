@@ -4,13 +4,3 @@ python-multipart==0.0.6
 opencv-python-headless==4.8.1.78
 numpy==1.24.3
 scikit-image==0.22.0
-```
-
-### Step 2: Update Render Settings
-
-Your folder structure is probably:
-```
-crack-analyst/
-├── backend/
-│   └── crack_ai_webapp.py
-└── requirements.txt  ← needs to be here
