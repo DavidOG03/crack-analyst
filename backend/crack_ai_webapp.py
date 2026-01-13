@@ -1,6 +1,6 @@
 """
 STRUCTURAL CRACK DETECTION SYSTEM
-Classical Computer Vision | No ML Model Required
+Classical Computer Vision with Structural Validation + Visual Overlay
 
 Save as: crack_ai_webapp.py
 """
@@ -11,6 +11,7 @@ import uvicorn
 import cv2
 import numpy as np
 from skimage.morphology import skeletonize
+import base64
 
 # -----------------------------------------
 # FASTAPI APP
@@ -34,14 +35,9 @@ app.add_middleware(
 # STAGE 1: CRACK CANDIDATE DETECTION
 # -----------------------------------------
 def detect_crack(image):
-    """
-    Detect crack-like features using morphology
-    """
-
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Enhance dark linear features (cracks)
     blackhat = cv2.morphologyEx(
         blurred,
         cv2.MORPH_BLACKHAT,
@@ -83,11 +79,6 @@ def detect_crack(image):
 # STAGE 2: STRUCTURAL VALIDATION
 # -----------------------------------------
 def is_structural_crack(mask):
-    """
-    Validate whether crack-like features
-    satisfy structural crack criteria
-    """
-
     skeleton = skeletonize(mask > 0)
     length_px = np.sum(skeleton)
 
@@ -110,6 +101,25 @@ def is_structural_crack(mask):
     return True, "Structural crack validated"
 
 # -----------------------------------------
+# VISUAL OVERLAY
+# -----------------------------------------
+def generate_crack_overlay(image, mask):
+    overlay = image.copy()
+    overlay[mask > 0] = [0, 0, 255]
+
+    blended = cv2.addWeighted(image, 0.7, overlay, 0.3, 0)
+
+    contours, _ = cv2.findContours(
+        mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        cv2.rectangle(blended, (x, y), (x + w, y + h), (255, 0, 0), 2)
+
+    return blended
+
+# -----------------------------------------
 # CRACK ANALYSIS
 # -----------------------------------------
 def analyze_crack(mask):
@@ -128,7 +138,7 @@ def analyze_crack(mask):
 
     if contours:
         cnt = max(contours, key=cv2.contourArea)
-        (_, _), (w, h), angle = cv2.minAreaRect(cnt)
+        (_, _), (w, h), _ = cv2.minAreaRect(cnt)
 
         if h > w * 1.5:
             orientation = "Vertical"
@@ -199,15 +209,17 @@ async def analyze_image(file: UploadFile = File(...)):
         if image is None:
             return {
                 "status": "ERROR",
-                "message": "Invalid image file"
+                "message": "Invalid image file",
+                "crack_analysis": None
             }
 
-        crack_found, mask, status = detect_crack(image)
+        crack_found, mask, _ = detect_crack(image)
 
         if not crack_found:
             return {
                 "status": "NO_CRACK",
-                "message": "No crack-like features detected"
+                "message": "No crack-like features detected",
+                "crack_analysis": None
             }
 
         is_structural, reason = is_structural_crack(mask)
@@ -216,7 +228,8 @@ async def analyze_image(file: UploadFile = File(...)):
             return {
                 "status": "NON_STRUCTURAL_FEATURE",
                 "message": "Crack-like features detected but not structural",
-                "reason": reason
+                "reason": reason,
+                "crack_analysis": None
             }
 
         analysis = analyze_crack(mask)
@@ -225,18 +238,24 @@ async def analyze_image(file: UploadFile = File(...)):
             analysis["length_pixels"]
         )
 
+        overlay = generate_crack_overlay(image, mask)
+        _, buffer = cv2.imencode(".png", overlay)
+        overlay_base64 = base64.b64encode(buffer).decode("utf-8")
+
         return {
             "status": "STRUCTURAL_CRACK_DETECTED",
             "severity": severity,
             "crack_analysis": analysis,
             "engineering_recommendation": engineering_recommendation(severity),
-            "disclaimer": "All measurements are in pixel units and intended for comparative assessment only."
+            "overlay_image_base64": overlay_base64,
+            "disclaimer": "All measurements are pixel-based and intended for comparative assessment only."
         }
 
     except Exception as e:
         return {
             "status": "ERROR",
-            "message": str(e)
+            "message": str(e),
+            "crack_analysis": None
         }
 
 # -----------------------------------------
@@ -246,7 +265,7 @@ async def analyze_image(file: UploadFile = File(...)):
 async def root():
     return {
         "message": "Structural Crack Detection API is running",
-        "version": "1.1 - Rule-Based Structural Validation"
+        "version": "1.3 - Stable Contract + Structural Validation + Overlay"
     }
 
 # -----------------------------------------
