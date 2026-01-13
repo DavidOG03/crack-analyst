@@ -1,8 +1,7 @@
 """
-STRUCTURAL CRACK DETECTION SYSTEM
-Classical Computer Vision with Structural Validation + Visual Overlay
-
-Save as: crack_ai_webapp.py
+Structural Crack Detection - Demo-Proof Backend
+Classical Computer Vision Version
+No ML needed. Robust for frontend demo.
 """
 
 from fastapi import FastAPI, UploadFile, File
@@ -10,158 +9,123 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import cv2
 import numpy as np
-from skimage.morphology import skeletonize
 import base64
+from skimage.morphology import skeletonize
 
-# -----------------------------------------
-# FASTAPI APP
-# -----------------------------------------
-app = FastAPI(
-    title="Structural Crack Detection System (Classical CV)"
-)
+app = FastAPI(title="Demo-Proof Structural Crack Detection API")
 
-# -----------------------------------------
-# CORS CONFIG
-# -----------------------------------------
+# Allow all origins for demo
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# -----------------------------------------
-# STAGE 1: CRACK CANDIDATE DETECTION
-# -----------------------------------------
-def detect_crack(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+# -----------------------------
+# Helper Functions
+# -----------------------------
 
-    blackhat = cv2.morphologyEx(
-        blurred,
-        cv2.MORPH_BLACKHAT,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-    )
+def safe_skeletonize(mask):
+    try:
+        return skeletonize(mask > 0)
+    except Exception:
+        return np.zeros_like(mask, dtype=bool)
 
-    _, binary = cv2.threshold(
-        blackhat, 0, 255,
-        cv2.THRESH_BINARY + cv2.THRESH_OTSU
-    )
+def encode_overlay(image):
+    """Encode overlay image to base64"""
+    _, buf = cv2.imencode(".png", image)
+    return base64.b64encode(buf).decode()
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    cleaned = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
+# -----------------------------
+# Crack Detection
+# -----------------------------
+def detect_crack_demo(image):
+    """
+    Robust crack detection for demo.
+    Always returns a mask (even if empty)
+    """
+    try:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        # Enhance local contrast
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
 
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-        cleaned, connectivity=8
-    )
+        # Edge detection
+        edges = cv2.Canny(enhanced, 50, 150)
 
-    crack_mask = np.zeros_like(cleaned)
-    valid_components = 0
+        # Adaptive threshold
+        adaptive = cv2.adaptiveThreshold(
+            enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV, 21, 5
+        )
 
-    for i in range(1, num_labels):
-        area = stats[i, cv2.CC_STAT_AREA]
-        w = stats[i, cv2.CC_STAT_WIDTH]
-        h = stats[i, cv2.CC_STAT_HEIGHT]
+        combined = cv2.bitwise_and(edges, adaptive)
 
-        aspect_ratio = max(w, h) / (min(w, h) + 1e-5)
+        # Strengthen linear features
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel, iterations=2)
 
-        if area > 80 and aspect_ratio > 3.5:
-            crack_mask[labels == i] = 255
-            valid_components += 1
+        # Connected components
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(combined, connectivity=8)
+        mask = np.zeros_like(combined)
 
-    if valid_components == 0:
-        return False, None, "NO_CRACK"
+        valid = 0
+        for i in range(1, num_labels):
+            area = stats[i, cv2.CC_STAT_AREA]
+            w = stats[i, cv2.CC_STAT_WIDTH]
+            h = stats[i, cv2.CC_STAT_HEIGHT]
 
-    return True, crack_mask, "CRACK_CANDIDATE"
+            if area < 20:
+                continue
+            aspect_ratio = max(w, h) / (min(w, h) + 1e-5)
+            if aspect_ratio > 2.0:
+                mask[labels == i] = 255
+                valid += 1
 
-# -----------------------------------------
-# STAGE 2: STRUCTURAL VALIDATION
-# -----------------------------------------
-def is_structural_crack(mask):
-    skeleton = skeletonize(mask > 0)
-    length_px = np.sum(skeleton)
+        # If no valid crack detected, still return empty mask
+        status = "NO_CRACK" if valid == 0 else "STRUCTURAL_CRACK_DETECTED"
 
-    if length_px < 60:
-        return False, "Crack length too short to be structural"
+        return status, mask
 
-    dist = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
-    widths = dist[mask > 0] * 2
+    except Exception:
+        return "ERROR_PROCESSING_IMAGE", np.zeros_like(image[:, :, 0])
 
-    if len(widths) == 0:
-        return False, "Unable to compute crack width"
-
-    if np.std(widths) > 4:
-        return False, "High width variation indicates non-structural feature"
-
-    crack_density = np.sum(mask > 0) / mask.size
-    if crack_density > 0.25:
-        return False, "Feature density too high, likely surface texture"
-
-    return True, "Structural crack validated"
-
-# -----------------------------------------
-# VISUAL OVERLAY
-# -----------------------------------------
-def generate_crack_overlay(image, mask):
-    overlay = image.copy()
-    overlay[mask > 0] = [0, 0, 255]
-
-    blended = cv2.addWeighted(image, 0.7, overlay, 0.3, 0)
-
-    contours, _ = cv2.findContours(
-        mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )
-
-    for cnt in contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        cv2.rectangle(blended, (x, y), (x + w, y + h), (255, 0, 0), 2)
-
-    return blended
-
-# -----------------------------------------
-# CRACK ANALYSIS
-# -----------------------------------------
+# -----------------------------
+# Crack Analysis
+# -----------------------------
 def analyze_crack(mask):
-    skeleton = skeletonize(mask > 0)
-    length_px = np.sum(skeleton)
-
+    skeleton = safe_skeletonize(mask)
+    length = float(np.sum(skeleton))
     dist = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
-    width_px = np.mean(dist[mask > 0]) * 2 if np.any(mask > 0) else 0
-
-    contours, _ = cv2.findContours(
-        mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )
+    width = float(np.mean(dist[mask > 0]) * 2) if np.any(mask > 0) else 0
 
     orientation = "Irregular"
-    pattern = "Undetermined"
+    pattern = "Structural crack"
 
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if contours:
         cnt = max(contours, key=cv2.contourArea)
         (_, _), (w, h), _ = cv2.minAreaRect(cnt)
-
-        if h > w * 1.5:
+        if h > w * 1.4:
             orientation = "Vertical"
-            pattern = "Shrinkage or load-induced crack"
-        elif w > h * 1.5:
+        elif w > h * 1.4:
             orientation = "Horizontal"
-            pattern = "Settlement-related crack"
         else:
             orientation = "Diagonal"
-            pattern = "Shear-related structural crack"
 
     return {
-        "length_pixels": round(float(length_px), 2),
-        "width_pixels": round(float(width_px), 2),
+        "length_pixels": round(length, 2),
+        "width_pixels": round(width, 2),
         "orientation": orientation,
-        "pattern": pattern
+        "pattern": pattern,
     }
 
-# -----------------------------------------
-# SEVERITY CLASSIFICATION
-# -----------------------------------------
+# -----------------------------
+# Severity & Recommendation
+# -----------------------------
 def classify_severity(width, length):
-    if width < 1.5 and length < 80:
+    if width < 1 and length < 80:
         return "Low"
     elif width < 3 and length < 200:
         return "Moderate"
@@ -170,111 +134,69 @@ def classify_severity(width, length):
     else:
         return "Critical"
 
-# -----------------------------------------
-# ENGINEERING RECOMMENDATION
-# -----------------------------------------
-def engineering_recommendation(severity):
-    return {
-        "Low": {
-            "risk_level": "Low",
-            "recommended_action": "Seal crack and monitor",
-            "engineer_required": False
-        },
-        "Moderate": {
-            "risk_level": "Medium",
-            "recommended_action": "Epoxy injection or surface repair",
-            "engineer_required": True
-        },
-        "Severe": {
-            "risk_level": "High",
-            "recommended_action": "Structural strengthening required",
-            "engineer_required": True
-        },
-        "Critical": {
-            "risk_level": "Critical",
-            "recommended_action": "Immediate structural assessment required",
-            "engineer_required": True
-        }
-    }[severity]
+def recommendation(severity):
+    mapping = {
+        "Low": ("Low", "Seal and monitor"),
+        "Moderate": ("Medium", "Epoxy injection"),
+        "Severe": ("High", "Structural strengthening"),
+        "Critical": ("Critical", "Immediate evacuation"),
+    }
+    return mapping.get(severity, ("Critical", "Immediate evacuation"))
 
-# -----------------------------------------
-# API ENDPOINT
-# -----------------------------------------
+# -----------------------------
+# API Endpoint
+# -----------------------------
 @app.post("/analyze")
-async def analyze_image(file: UploadFile = File(...)):
+async def analyze(file: UploadFile = File(...)):
     try:
         data = await file.read()
         image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-
         if image is None:
-            return {
-                "status": "ERROR",
-                "message": "Invalid image file",
-                "crack_analysis": None
-            }
+            return {"status": "ERROR", "message": "Invalid image file"}
 
-        crack_found, mask, _ = detect_crack(image)
+        status, mask = detect_crack_demo(image)
 
-        if not crack_found:
-            return {
-                "status": "NO_CRACK",
-                "message": "No crack-like features detected",
-                "crack_analysis": None
-            }
+        # Always create overlay for frontend demo
+        overlay = image.copy()
+        overlay[mask > 0] = [0, 0, 255]  # Red cracks
+        blended = cv2.addWeighted(image, 0.7, overlay, 0.3, 0)
+        overlay_b64 = encode_overlay(blended)
 
-        is_structural, reason = is_structural_crack(mask)
-
-        if not is_structural:
-            return {
-                "status": "NON_STRUCTURAL_FEATURE",
-                "message": "Crack-like features detected but not structural",
-                "reason": reason,
-                "crack_analysis": None
-            }
-
-        analysis = analyze_crack(mask)
-        severity = classify_severity(
-            analysis["width_pixels"],
-            analysis["length_pixels"]
-        )
-
-        overlay = generate_crack_overlay(image, mask)
-        _, buffer = cv2.imencode(".png", overlay)
-        overlay_base64 = base64.b64encode(buffer).decode("utf-8")
-
-        return {
-            "status": "STRUCTURAL_CRACK_DETECTED",
-            "severity": severity,
-            "crack_analysis": analysis,
-            "engineering_recommendation": engineering_recommendation(severity),
-            "overlay_image_base64": overlay_base64,
-            "disclaimer": "All measurements are pixel-based and intended for comparative assessment only."
+        response = {
+            "status": status,
+            "overlay_image_base64": overlay_b64
         }
+
+        if status == "STRUCTURAL_CRACK_DETECTED":
+            analysis = analyze_crack(mask)
+            severity = classify_severity(
+                analysis["width_pixels"], analysis["length_pixels"]
+            )
+            risk, action = recommendation(severity)
+            response.update({
+                "crack_analysis": analysis,
+                "severity": severity,
+                "engineering_recommendation": {
+                    "risk_level": risk,
+                    "recommended_action": action,
+                    "engineer_required": severity != "Low",
+                }
+            })
+
+        return response
 
     except Exception as e:
-        return {
-            "status": "ERROR",
-            "message": str(e),
-            "crack_analysis": None
-        }
+        return {"status": "ERROR", "message": f"Exception: {str(e)}"}
 
-# -----------------------------------------
-# HEALTH CHECK
-# -----------------------------------------
+# -----------------------------
+# Health Check
+# -----------------------------
 @app.get("/")
 async def root():
-    return {
-        "message": "Structural Crack Detection API is running",
-        "version": "1.3 - Stable Contract + Structural Validation + Overlay"
-    }
+    return {"message": "Demo-Proof Structural Crack Detection API is running"}
 
-# -----------------------------------------
-# RUN SERVER
-# -----------------------------------------
+# -----------------------------
+# Run Server
+# -----------------------------
 if __name__ == "__main__":
-    uvicorn.run(
-        "crack_ai_webapp:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+    uvicorn.run("crack_demo_backend:app", host="0.0.0.0", port=8000, reload=True)

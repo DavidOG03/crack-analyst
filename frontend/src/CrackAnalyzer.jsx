@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Upload,
   AlertCircle,
   CheckCircle,
   FileImage,
   Loader2,
-  XCircle,
 } from "lucide-react";
 
 export default function CrackDetectionApp() {
@@ -17,44 +16,21 @@ export default function CrackDetectionApp() {
 
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-  /* -----------------------------
-     FILE HANDLING (HARDENED)
-  ------------------------------ */
   const handleFileSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setError("Only image files are allowed");
-      return;
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+      setPreview(URL.createObjectURL(file));
+      setResult(null);
+      setError(null);
     }
-
-    if (file.size > 10 * 1024 * 1024) {
-      setError("File size must be less than 10MB");
-      return;
-    }
-
-    setSelectedFile(file);
-    setPreview(URL.createObjectURL(file));
-    setResult(null);
-    setError(null);
   };
 
-  useEffect(() => {
-    return () => {
-      if (preview) URL.revokeObjectURL(preview);
-    };
-  }, [preview]);
-
-  /* -----------------------------
-     ANALYSIS REQUEST
-  ------------------------------ */
   const handleAnalyze = async () => {
     if (!selectedFile) return;
 
     setLoading(true);
     setError(null);
-    setResult(null);
 
     const formData = new FormData();
     formData.append("file", selectedFile);
@@ -65,84 +41,80 @@ export default function CrackDetectionApp() {
         body: formData,
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error("Analysis failed");
 
       const data = await response.json();
       setResult(data);
     } catch (err) {
+      setError(
+        `Failed to analyze image. Check backend is running at ${API_URL}`
+      );
       console.error(err);
-      setError(`Backend not reachable at ${API_URL}`);
     } finally {
       setLoading(false);
     }
   };
 
-  /* -----------------------------
-     UI HELPERS
-  ------------------------------ */
   const getSeverityColor = (severity) => {
-    return (
-      {
-        Low: "bg-green-100 text-green-800 border-green-300",
-        Moderate: "bg-yellow-100 text-yellow-800 border-yellow-300",
-        Severe: "bg-orange-100 text-orange-800 border-orange-300",
-        Critical: "bg-red-100 text-red-800 border-red-300",
-      }[severity] || "bg-gray-100 text-gray-800 border-gray-300"
-    );
+    const colors = {
+      Low: "bg-green-100 text-green-800 border-green-300",
+      Moderate: "bg-yellow-100 text-yellow-800 border-yellow-300",
+      Severe: "bg-orange-100 text-orange-800 border-orange-300",
+      Critical: "bg-red-100 text-red-800 border-red-300",
+    };
+    return colors[severity] || "bg-gray-100 text-gray-800 border-gray-300";
   };
 
   const getRiskColor = (risk) => {
-    return (
-      {
-        Low: "text-green-600",
-        Medium: "text-yellow-600",
-        High: "text-orange-600",
-        Critical: "text-red-600",
-      }[risk] || "text-gray-600"
-    );
+    const colors = {
+      Low: "text-green-600",
+      Medium: "text-yellow-600",
+      High: "text-orange-600",
+      Critical: "text-red-600",
+    };
+    return colors[risk] || "text-gray-600";
   };
 
-  const isStructural =
-    result?.status === "STRUCTURAL_CRACK_DETECTED" && result?.crack_analysis;
-
-  /* -----------------------------
-     RENDER
-  ------------------------------ */
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
-        {/* HEADER */}
+        {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-slate-800 mb-2">
-            Structural Crack Detection System
+            AI Crack Detection System
           </h1>
           <p className="text-slate-600">
-            Computer Vision Based Structural Assessment
+            Upload an image to detect and analyze structural cracks
           </p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
-          {/* UPLOAD */}
+          {/* Upload Section */}
           <div className="bg-white rounded-xl shadow-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Upload Image</h2>
+            <h2 className="text-xl font-semibold text-slate-800 mb-4">
+              Upload Image
+            </h2>
 
-            <label className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg cursor-pointer hover:border-blue-500 bg-slate-50">
-              {preview ? (
-                <img
-                  src={preview}
-                  alt="Preview"
-                  className="max-h-48 object-contain rounded"
-                />
-              ) : (
-                <>
-                  <Upload className="w-12 h-12 text-slate-400 mb-3" />
-                  <p className="text-sm text-slate-600">
-                    PNG, JPG, JPEG. Max 10MB
-                  </p>
-                </>
-              )}
+            <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-blue-500 transition-colors bg-slate-50">
+              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                {preview ? (
+                  <img
+                    src={preview}
+                    alt="Preview"
+                    className="max-h-48 max-w-full object-contain rounded"
+                  />
+                ) : (
+                  <>
+                    <Upload className="w-12 h-12 text-slate-400 mb-3" />
+                    <p className="text-sm text-slate-600 mb-2">
+                      Click to upload or drag and drop
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      PNG, JPG or JPEG (MAX. 10MB)
+                    </p>
+                  </>
+                )}
+              </div>
               <input
                 type="file"
                 className="hidden"
@@ -154,12 +126,12 @@ export default function CrackDetectionApp() {
             <button
               onClick={handleAnalyze}
               disabled={!selectedFile || loading}
-              className="w-full mt-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white py-3 rounded-lg flex justify-center items-center"
+              className="w-full mt-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center"
             >
               {loading ? (
                 <>
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Analyzing
+                  Analyzing...
                 </>
               ) : (
                 <>
@@ -170,97 +142,144 @@ export default function CrackDetectionApp() {
             </button>
 
             {error && (
-              <div className="mt-4 p-4 bg-red-50 border rounded-lg flex">
-                <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
+              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start">
+                <AlertCircle className="w-5 h-5 text-red-500 mr-3 mt-0.5 shrink-0" />
                 <p className="text-sm text-red-700">{error}</p>
               </div>
             )}
           </div>
 
-          {/* RESULTS */}
+          {/* Results Section */}
           <div className="bg-white rounded-xl shadow-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Analysis Results</h2>
+            <h2 className="text-xl font-semibold text-slate-800 mb-4">
+              Analysis Results
+            </h2>
 
-            {!result && (
-              <div className="h-64 flex items-center justify-center text-slate-400">
-                <FileImage className="w-12 h-12 mr-2" />
-                Awaiting analysis
-              </div>
-            )}
-
-            {result?.status === "NO_CRACK" && (
-              <div className="h-64 flex flex-col items-center justify-center">
-                <CheckCircle className="w-14 h-14 text-green-500 mb-3" />
-                <p className="font-semibold">No crack detected</p>
-              </div>
-            )}
-
-            {result?.status === "NON_STRUCTURAL_FEATURE" && (
-              <div className="h-64 flex flex-col items-center justify-center">
-                <XCircle className="w-14 h-14 text-yellow-500 mb-3" />
-                <p className="font-semibold">Non-structural feature</p>
-                <p className="text-sm text-slate-600 text-center mt-2">
-                  {result.reason}
+            {!result ? (
+              <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                <FileImage className="w-16 h-16 mb-3" />
+                <p className="text-center">
+                  Upload and analyze an image to see results
                 </p>
               </div>
-            )}
-
-            {isStructural && (
+            ) : (
               <div className="space-y-6">
-                {/* OVERLAY IMAGE */}
-                {result.overlay_image_base64 && (
-                  <img
-                    src={`data:image/png;base64,${result.overlay_image_base64}`}
-                    alt="Crack Overlay"
-                    className="w-full rounded-lg border"
-                  />
-                )}
-
-                {/* SEVERITY */}
-                <div className="flex justify-between">
-                  <span>Severity</span>
-                  <span
-                    className={`px-3 py-1 rounded-full border text-sm font-semibold ${getSeverityColor(
-                      result.severity
-                    )}`}
-                  >
-                    {result.severity}
+                {/* Status */}
+                <div className="flex items-center space-x-2">
+                  {result.status === "STRUCTURAL_CRACK_DETECTED" ? (
+                    <CheckCircle className="w-6 h-6 text-red-500" />
+                  ) : result.status === "NO_CRACK" ? (
+                    <CheckCircle className="w-6 h-6 text-green-500" />
+                  ) : (
+                    <AlertCircle className="w-6 h-6 text-yellow-500" />
+                  )}
+                  <span className="font-semibold text-slate-800">
+                    {result.status.replace(/_/g, " ")}
                   </span>
                 </div>
 
-                {/* METRICS */}
-                <div className="bg-slate-50 p-4 rounded-lg text-sm space-y-2">
-                  <div className="flex justify-between">
-                    <span>Length</span>
-                    <span>{result.crack_analysis.length_pixels} px</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Width</span>
-                    <span>{result.crack_analysis.width_pixels} px</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Orientation</span>
-                    <span>{result.crack_analysis.orientation}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Pattern</span>
-                    <span>{result.crack_analysis.pattern}</span>
-                  </div>
-                </div>
+                {/* Overlay Image */}
+                {result.overlay_image_base64 && (
+                  <img
+                    src={`data:image/png;base64,${result.overlay_image_base64}`}
+                    alt="Overlay"
+                    className="w-full rounded-lg shadow-md"
+                  />
+                )}
 
-                {/* RECOMMENDATION */}
-                {result.engineering_recommendation && (
-                  <div className="bg-blue-50 p-4 rounded-lg text-sm">
-                    <p className="font-semibold mb-2">Recommendation</p>
-                    <p
-                      className={`font-semibold ${getRiskColor(
-                        result.engineering_recommendation.risk_level
-                      )}`}
-                    >
-                      Risk: {result.engineering_recommendation.risk_level}
-                    </p>
-                    <p>
-                      {result.engineering_recommendation.recommended_action}
+                {/* Crack Analysis */}
+                {result.crack_analysis && (
+                  <>
+                    {/* Severity Badge */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-slate-600">
+                        Severity Level
+                      </span>
+                      <span
+                        className={`px-4 py-2 rounded-full text-sm font-semibold border ${getSeverityColor(
+                          result.severity
+                        )}`}
+                      >
+                        {result.severity}
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-50 rounded-lg p-4">
+                      <h3 className="font-semibold text-slate-800 mb-3">
+                        Crack Analysis
+                      </h3>
+                      <div className="space-y-2 text-sm">
+                        {[
+                          "length_pixels",
+                          "width_pixels",
+                          "orientation",
+                          "pattern",
+                        ].map((key) => (
+                          <div className="flex justify-between" key={key}>
+                            <span className="text-slate-600">
+                              {key.replace("_", " ").replace("pixels", " (px)")}
+                              :
+                            </span>
+                            <span className="font-medium text-slate-800">
+                              {result.crack_analysis[key]}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Engineering Recommendation */}
+                    {result.engineering_recommendation && (
+                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                        <h3 className="font-semibold text-slate-800 mb-3">
+                          Engineering Recommendation
+                        </h3>
+                        <div className="space-y-3 text-sm">
+                          <div>
+                            <span className="text-slate-600 block mb-1">
+                              Risk Level:
+                            </span>
+                            <span
+                              className={`font-semibold ${getRiskColor(
+                                result.engineering_recommendation.risk_level
+                              )}`}
+                            >
+                              {result.engineering_recommendation.risk_level}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-600 block mb-1">
+                              Recommended Action:
+                            </span>
+                            <span className="font-medium text-slate-800">
+                              {
+                                result.engineering_recommendation
+                                  .recommended_action
+                              }
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-600 block mb-1">
+                              Engineer Required:
+                            </span>
+                            <span className="font-medium text-slate-800">
+                              {result.engineering_recommendation
+                                .engineer_required
+                                ? "Yes"
+                                : "No"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* No Crack Message */}
+                {result.status === "NO_CRACK" && (
+                  <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
+                    <p className="text-green-700 font-semibold">
+                      {result.message || "No crack detected in this image."}
                     </p>
                   </div>
                 )}
@@ -269,9 +288,10 @@ export default function CrackDetectionApp() {
           </div>
         </div>
 
-        <p className="text-center text-xs text-slate-500 mt-6">
-          Backend: {API_URL}
-        </p>
+        <div className="mt-8 text-center text-sm text-slate-500">
+          Connected to backend at{" "}
+          <code className="bg-slate-200 px-2 py-1 rounded">{API_URL}</code>
+        </div>
       </div>
     </div>
   );
