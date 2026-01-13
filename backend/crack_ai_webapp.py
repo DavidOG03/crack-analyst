@@ -19,7 +19,12 @@ app = FastAPI(title="AI Crack Detection System")
 # ADD CORS MIDDLEWARE
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "https://crack-detection-api-picu.onrender.com",
+        "*"  # Allow all origins (you can restrict this in production)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
